@@ -23,6 +23,7 @@ compression mechanism depends on embedded methods or runtime wiring inside them.
 | `source/cli_manual_compress_excerpt.py` | Labeled source excerpt for the manual `/compress` CLI command. |
 | `source/website/docs/developer-guide/context-compression-and-caching.md` | Upstream docs snapshot; source files remain authoritative for current behavior. |
 | `source/LICENSE` | Upstream license copied with the source snapshot. |
+| `docs/agent-implementation-guide.md` | Public-safe implementation instructions for agents porting the mechanism. |
 
 ## Excluded On Purpose
 
@@ -32,4 +33,3 @@ compression mechanism depends on embedded methods or runtime wiring inside them.
   the extraction.
 - Runtime state: all databases, logs, configs, run artifacts, and transcripts
   are excluded.
-

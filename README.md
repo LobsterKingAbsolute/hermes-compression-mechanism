@@ -34,6 +34,8 @@ operator-specific secrets.
   `source/cli_manual_compress_excerpt.py` - manual `/compress` command surface.
 - `source/website/docs/developer-guide/context-compression-and-caching.md` -
   upstream developer documentation snapshot.
+- `docs/agent-implementation-guide.md` - instructions for agents implementing
+  the mechanism in another runtime.
 - `docs/combined-analysis.md` - end-to-end mechanism explanation.
 - `docs/export-safety-review.md` - publication safety review.
 - `docs/publication-checks.md` - checks run before initial publication.
