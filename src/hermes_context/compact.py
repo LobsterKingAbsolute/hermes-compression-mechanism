@@ -70,10 +70,11 @@ class Compactor:
             middle = []
         flatten = lambda groups: [m for group in groups for m in group]
         original = head + notes + flatten(middle) + tail
+        origin = tuple(range(len(head))) + (None,) * len(notes) + tuple(range(len(head), len(messages)))
         before = self._count(original)
         limit = self.budget.input_limit
         if before <= limit:
-            return Result(original, Stats(before, before, limit, 0, False, self.counter_kind, False))
+            return Result(original, Stats(before, before, limit, 0, False, self.counter_kind, False), origin)
         protected = head + notes + tail
         required = self._count(protected)
         if required > limit:
@@ -81,12 +82,27 @@ class Compactor:
         dropped: list[Message] = []
         retained = flatten(middle)
         available = 0
-        for index, turn in enumerate(middle):
+        removed = 0
+        # Exact algebra for our byte estimator avoids copying/counting every suffix.
+        # Arbitrary custom counters retain their original, independently checked path.
+        fast = self.counter_kind == "approximate"
+        def encoded_size(items: list[Message]) -> int:
+            return sum(len(json.dumps(m, ensure_ascii=False, separators=(",", ":")).encode("utf-8")) for m in items)
+        total_bytes = encoded_size(head + notes + retained + tail) if fast else 0
+        total_messages = len(head) + len(notes) + len(retained) + len(tail)
+        for turn in middle:
             dropped.extend(turn)
-            retained = flatten(middle[index + 1:])
-            available = limit - self._count(head + notes + retained + tail)
+            removed += len(turn)
+            if fast:
+                total_bytes -= encoded_size(turn)
+                total_messages -= len(turn)
+                count = (total_bytes + total_messages + 3) // 3 + 4 * total_messages if total_messages else 0
+            else:
+                count = self._count(head + notes + retained[removed:] + tail)
+            available = limit - count
             if available >= self.policy.summary_tokens:
                 break
+        retained = retained[removed:]
         candidate = head + notes + retained + tail
         if self._count(candidate) > limit:
             raise BudgetExceeded(self._count(candidate), limit)
@@ -119,4 +135,6 @@ class Compactor:
         if after > limit:
             raise BudgetExceeded(after, limit)
         prepare(candidate)
-        return Result(candidate, Stats(before, after, limit, len(dropped), bool(summary), self.counter_kind, bool(dropped)))
+        origin = (tuple(range(len(head))) + (None,) * (len(notes) + len(summary))
+                  + tuple(range(len(head) + len(dropped), len(messages))))
+        return Result(candidate, Stats(before, after, limit, len(dropped), bool(summary), self.counter_kind, bool(dropped)), origin)

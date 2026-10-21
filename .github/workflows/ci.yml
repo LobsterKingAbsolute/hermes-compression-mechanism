@@ -29,6 +29,7 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: python -m pip install .
       - run: python -m unittest discover -s tests -v
+      - run: python -m hermes_context doctor
       - run: python -m hermes_context demo
       - run: python benchmarks/benchmark.py
       - run: python tools/publication_scan.py
@@ -36,7 +37,28 @@ jobs:
         shell: bash
         run: |
           python -m pip wheel --no-deps . --wheel-dir dist
-          python -c "import glob,zipfile; p=glob.glob('dist/*.whl')[0]; z=zipfile.ZipFile(p); names=z.namelist(); assert any(n.endswith('/LICENSE') for n in names); assert any(n.endswith('/NOTICE.md') for n in names); assert not any(n.startswith('source/') for n in names); print('Wheel contents and licenses verified')"
+          python -c "import glob,zipfile; p=glob.glob('dist/*.whl')[0]; z=zipfile.ZipFile(p); names=z.namelist(); assert any(n.endswith('/LICENSE') for n in names); assert any(n.endswith('/NOTICE.md') for n in names); assert 'hermes_context/plugin_entry.py' in names; assert not any(n.startswith('source/') for n in names); print('Wheel contents and licenses verified')"
+  hermes-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
+      - run: python -m pip install .
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: NousResearch/hermes-agent
+          ref: 4d04303818b61bf3aa09278af48356315515965b
+          path: _upstream
+          persist-credentials: false
+          sparse-checkout: agent/context_engine.py
+          sparse-checkout-cone-mode: false
+      - name: Check pinned upstream ABC, not the full agent runtime
+        run: python tools/check_hermes_contract.py _upstream/agent/context_engine.py
   secrets:
     runs-on: ubuntu-latest
     timeout-minutes: 10

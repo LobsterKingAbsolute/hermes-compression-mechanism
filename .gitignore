@@ -13,6 +13,7 @@ dist/
 htmlcov/
 .worktrees/
 .superpowers/
+_upstream/
 # Never publish runtime state or credentials
 .env
 .env.*

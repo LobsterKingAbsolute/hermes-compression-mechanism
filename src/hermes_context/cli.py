@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 from .compact import Compactor
-from .core import MAX_BYTES, Budget, BudgetExceeded, ContextError, Message, Policy
+from .core import MAX_BYTES, Budget, BudgetExceeded, ContextError, Message, Policy, parse_json
 from .privacy import redact_messages
 
 
@@ -31,7 +31,7 @@ def _load(path: Path) -> list[Message]:
             raw = stream.read(MAX_BYTES + 1)
         if len(raw) > MAX_BYTES:
             raise ContextError("Input file exceeds the size limit.")
-        value = json.loads(raw.decode("utf-8"))
+        value = parse_json(raw.decode("utf-8"))
     except (OSError, UnicodeError, ValueError, RecursionError) as exc:
         if isinstance(exc, ContextError):
             raise
@@ -68,6 +68,8 @@ def _export(path: Path, messages: list[Message]) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Offline, turn-aware context compaction. Default output: metrics only.")
+    from . import __version__
+    parser.add_argument("--version", action="version", version=f"Hermes Context {__version__}")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("demo", help="Run a synthetic demonstration without a model or key.")
     compact = commands.add_parser("compact", help="Read local text-message JSON and print safe metrics.")
@@ -80,8 +82,31 @@ def main(argv: list[str] | None = None) -> int:
     compact.add_argument("--keep-last-turns", type=int, default=2)
     compact.add_argument("--summary-tokens", type=int, default=384)
     compact.add_argument("--output", type=Path, help="Explicit redacted export; may still contain private text. Never overwrite.")
+    health = commands.add_parser("doctor", help="Run an offline self-test; optionally check the installed Hermes contract.")
+    health.add_argument("--hermes", action="store_true", help="Explicitly import the installed Hermes ABC.")
+    installer = commands.add_parser("install-hermes", help="Preview an opt-in plugin install. No configuration changes.")
+    installer.add_argument("--destination", type=Path, required=True, help="New HERMES_HOME/plugins/hermes_context directory.")
+    installer.add_argument("--apply", action="store_true", help="Create the plugin files; otherwise only preview.")
+    installer.add_argument("--threshold-percent", type=float, default=0.75)
+    installer.add_argument("--reserved-output", type=int, default=1024)
+    installer.add_argument("--request-overhead", type=int, default=0)
+    installer.add_argument("--safety-margin", type=int, default=128)
+    installer.add_argument("--keep-first-turns", type=int, default=1)
+    installer.add_argument("--keep-last-turns", type=int, default=2)
+    installer.add_argument("--summary-tokens", type=int, default=384)
     args = parser.parse_args(argv)
     try:
+        if args.command == "doctor":
+            from .installation import doctor
+            report = doctor(check_hermes=args.hermes)
+            print(json.dumps(report, sort_keys=True))
+            return 0 if report["self_test"] == "passed" and report["hermes_contract"] != "unavailable_or_incompatible" else 2
+        if args.command == "install-hermes":
+            from .installation import DEFAULT_OPTIONS, install_plugin
+            options = {key: getattr(args, key) for key in DEFAULT_OPTIONS}
+            report = install_plugin(args.destination, apply=args.apply, options=options)
+            print(json.dumps(report, sort_keys=True))
+            return 0
         if args.command == "demo":
             result = Compactor(Budget(4096, 512)).compact(demo_messages())
         else:

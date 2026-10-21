@@ -104,6 +104,8 @@ class Stats:
 class Result:
     messages: list[Message]
     stats: Stats
+    # None denotes generated notes; other entries identify exact input occurrences.
+    source_indices: tuple[int | None, ...] = ()
 
     def report(self) -> dict[str, int | float | str | bool]:
         """Value-free metrics: safe to log without emitting conversation content."""
@@ -120,6 +122,24 @@ def estimate_tokens(messages: list[Message]) -> int:
     return (len(data) + 2) // 3 + 4 * len(messages)
 
 
+
+def parse_json(text: str) -> Any:
+    """Reject ambiguous duplicate keys and nonstandard numeric constants."""
+    def unique(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        value: dict[str, Any] = {}
+        for key, item in pairs:
+            if key in value:
+                raise ContextError("Duplicate JSON keys are not supported.")
+            value[key] = item
+        return value
+    def reject_constant(value: str) -> None:
+        raise ContextError("Nonstandard JSON numbers are not supported.")
+    try:
+        return json.loads(text, object_pairs_hook=unique, parse_constant=reject_constant)
+    except (ValueError, RecursionError):
+        raise ContextError("Invalid or ambiguous JSON input.") from None
+
+
 def _text(value: object, *, nonempty: bool = False) -> bool:
     return isinstance(value, str) and (bool(value) or not nonempty)
 
@@ -131,7 +151,6 @@ def prepare(messages: object, *, max_bytes: int = MAX_BYTES) -> tuple[list[Messa
     prefix: list[Message] = []
     turns: list[list[Message]] = []
     pending: set[str] = set()
-    used: set[str] = set()
     size = 0
     for message in messages:
         if not isinstance(message, dict):
@@ -167,12 +186,11 @@ def prepare(messages: object, *, max_bytes: int = MAX_BYTES) -> tuple[list[Messa
                 call_id = call["id"]
                 function = call["function"]
                 if (call["type"] != "function" or not _text(call_id, nonempty=True)
-                        or call_id in used or not isinstance(function, dict)
+                        or call_id in pending or not isinstance(function, dict)
                         or set(function) != {"name", "arguments"}
                         or not _text(function["name"], nonempty=True)
                         or not _text(function["arguments"])):
                     raise ContextError("Invalid or duplicate function tool call.")
-                used.add(call_id)
                 pending.add(call_id)
         try:
             size += len(json.dumps(message, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))

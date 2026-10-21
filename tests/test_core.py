@@ -70,7 +70,6 @@ class ValidationTests(unittest.TestCase):
             valid[:2] + [{"role": "user", "content": "interruption"}],
             valid[:2] + [{"role": "tool", "tool_call_id": "wrong", "content": "x"}],
             valid[:3] + [valid[2]],
-            valid + valid,
             [{"role": "user", "content": "x"}, {"role": "system", "content": "late"}],
             [{"role": "assistant", "content": None}],
             [{"role": "user", "content": "x", "name": 1}],

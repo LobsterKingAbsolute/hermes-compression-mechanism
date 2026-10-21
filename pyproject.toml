@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hermes-context-kit"
-version = "0.1.0"
-description = "Offline, turn-aware context compaction with explicit budgets and safe metrics"
+version = "0.2.0"
+description = "Offline context compaction with whole-tool-turn retention and an opt-in Hermes adapter"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE", "NOTICE.md"]
 authors = [{name = "Hermes Context contributors"}]
-keywords = ["agents", "context", "compression", "llm", "tool-calling"]
+keywords = ["agents", "context", "compression", "llm", "tool-calling", "hermes"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Programming Language :: Python :: 3 :: Only",

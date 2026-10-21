@@ -1,119 +1,137 @@
 # Hermes Context
 
-**Keep the current task. Compact old turns. Never split a tool exchange.**
+Offline context compaction for text agents, with an opt-in Hermes context-engine plugin.
 
-A small, offline-first Python library for agents whose conversation history grows
-past a request budget. It preserves system/developer instructions, the first task,
-and recent whole turns, then replaces eligible middle history with bounded,
-explicitly untrusted notes.
+**0.2.0 alpha · Python 3.11+ · MIT · No runtime dependencies**
 
-**Status: 0.1.0 alpha.** Text-only, standard-library runtime, Python 3.11+.
-The default summarizer is local and extractive: no account, model, API key,
-telemetry, environment-variable access, or network call. No PyPI release is claimed;
-install from this repository. This is not a drop-in Hermes plugin.
+Keep the leading instructions and recent complete turns. Replace eligible older
+history with bounded, explicitly untrusted notes. Never split a tool call from its
+results, silently truncate the current task, or invoke an external model by default.
 
-## Try it
+## Run it without a model or API key
 
 ```bash
 python -m pip install "git+https://github.com/LobsterKingAbsolute/hermes-compression-mechanism.git"
+hermes-context doctor
 hermes-context demo
 ```
 
-The demo uses generated synthetic messages and prints only numeric/scalar metrics.
-For reproducible installations, pin an audited commit rather than following main.
+Pin a reviewed commit for reproducible installations. No PyPI release is claimed.
+The demo uses only generated synthetic data. Default CLI output contains metrics,
+not conversations. The library does not execute tools or make provider calls.
+
+## New in 0.2
+
+- **Hermes adapter:** implements the current context-engine interface, clones state
+  per agent, resets usage on model switches, and discards stale compression results
+  after a reset. Activation is explicit; installation never edits Hermes config.
+- **Correct message identity:** retained rows recover their exact original metadata
+  by input position, even when messages have identical text or reused tool IDs.
+- **Faster long histories:** the default counter no longer repeatedly recounts every
+  remaining suffix. Custom counters retain an independently checked path.
+- **Better redaction:** quoted secrets with spaces are fully masked; structured
+  tool arguments retain valid JSON while secret-valued fields are replaced.
+- **Diagnostics and installation:** `doctor`, `doctor --hermes`, `--version`, and
+  `install-hermes` with a preview default and no overwriting existing installs.
+
+## Use the library
 
 ```python
 from hermes_context import Budget, Compactor, TaskState
 
 messages = [
-    {"role": "system", "content": "Do not send messages without approval."},
+    {"role": "system", "content": "Do not perform external actions without approval."},
     {"role": "user", "content": "Build a local prototype."},
     {"role": "assistant", "content": "The first tests pass."},
-    {"role": "user", "content": "Now review the error handling."},
+    {"role": "user", "content": "Review error handling next."},
 ]
 engine = Compactor(Budget(
     context_window=8192,
     reserved_output=1024,
-    request_overhead=256,  # Account for tool schemas and other request fields.
+    request_overhead=256,
     safety_margin=256,
 ))
 result = engine.compact(messages, state=TaskState(
     decisions=("Use SQLite",),
     constraints=("No network calls",),
 ))
-print(result.report())          # No conversation text in this report.
 next_messages = result.messages
+print(result.report())  # Scalar metrics, no transcript.
 ```
 
-## What it does
-
-| Boundary | Behavior |
-| --- | --- |
-| Leading system/developer instructions | Preserved verbatim |
-| First user turn and latest two turns | Preserved by default; policy is configurable |
-| Parallel function calls and their results | Validated and retained/removed as whole turns |
-| Protected content is too large | Raises `BudgetExceeded`; never silently truncates it |
-| Eligible middle history | Oldest turns removed first; optional bounded summary |
-| Summary authority | User-role historical notes, never a system/developer message |
-| Decisions and constraints | Explicit `TaskState` notes; no claim of inferred perfect recall |
-| Counters | Injectable; default is an approximation, not provider token usage |
-| Logging | `result.report()` contains scalar metrics only |
-| Local resume | Explicit versioned JSON export/import; no hidden session storage |
+`result.source_indices` maps each retained output row to its exact input index;
+`None` marks a generated note. It is not part of the metrics report or CLI export.
+A protected context that cannot fit raises `BudgetExceeded`, leaving input untouched.
 
 The budget is `context_window - reserved_output - request_overhead - safety_margin`.
-The returned messages fit **the configured counter**, not necessarily a provider's
-true tokenizer. The built-in UTF-8/3 estimate can undercount or overcount. Supply a
-provider/model-aware counter and account for schemas, media, framing and reasoning
-requirements in your host application. The library does not query model limits.
+The built-in byte-based counter is **approximate**, not a provider tokenizer or a
+universal upper bound. Include tool schemas and all other request overhead. Supply
+an appropriate custom counter for stricter model-specific accounting.
 
-Compaction is **lossy**. Local excerpts can omit an important older fact. Put critical
-state in `TaskState` or protected turns, and evaluate answer quality in your own
-workload. Smaller context does not itself prove better answers or lower API bills.
+Compaction is **lossy**. Local excerpts may omit an older fact. `TaskState` holds
+caller-authored notes, not automatically inferred permanent memory. Do not assume
+that a lower token estimate implies better answers or lower real API bills.
 
-## A real summarizer is opt-in
+## Enable it in Hermes
 
-```python
-def my_summarizer(redacted_history, max_tokens):
-    # Your application implements this synchronous callback.
-    # A provider call here sends conversation content outside your process.
-    return "Previously chose SQLite; deployment has not happened."
-
-engine = Compactor(Budget(8192), summarizer=my_summarizer)
-```
-
-A callback is invoked at most once per compaction, and only when summary space is
-available. Recognizable credentials are masked before and after it. Redaction is
-best-effort, not a guarantee: arbitrary private data and structural tool identifiers
-may remain. The host must obtain appropriate consent before using an external model.
-Errors stop compaction rather than silently retrying or making fallback API calls.
-
-## Local files and privacy
+Use **the same Python environment that runs Hermes**, not an unrelated global pip:
 
 ```bash
+python -m hermes_context doctor --hermes
+python -m hermes_context install-hermes --destination "<HERMES_HOME>/plugins/hermes_context"
+# Review the preview; create the plugin only when ready:
+python -m hermes_context install-hermes --destination "<HERMES_HOME>/plugins/hermes_context" --apply
+```
+
+Replace `<HERMES_HOME>` with your actual Hermes home directory. Then select it:
+
+```yaml
+context:
+  engine: hermes_context
+```
+
+Restart the agent/session. To roll back, change the engine to `compressor` and
+restart. Set the plugin's output reservation to the host's real output limit and
+account for external prompt/schema overhead; the defaults are not model-specific.
+[Full installation, options, rollback, and compatibility notes](docs/hermes-integration.md).
+
+### Compatibility boundary
+
+The adapter is tested against the context-engine ABC from the pinned upstream
+revision documented in the integration guide. This is **not** a certification of
+all live providers, the complete Hermes runtime, or your local installation.
+
+Recognized persistence metadata is preserved on retained rows. Unknown fields,
+multimodal content, opaque reasoning blocks, incomplete tool chains, duplicate IDs
+within one call batch, and data-use constrained histories **pass through intact**.
+A nonempty provider `memory_context` also passes through rather than being ignored.
+An unsupported request may still be too large for its provider. Check `get_status()`
+for the content-free outcome instead of assuming compression happened.
+
+The standalone core deliberately remains stricter and raises on unsupported
+schemas. Reused call IDs are allowed across completed exchanges, not within a batch.
+
+## CLI and privacy
+
+```bash
+hermes-context --version
 hermes-context compact history.json --context-window 8192 --reserved-output 1024
-# Optional: writes a NEW local file, never overwrites an existing destination.
 hermes-context compact history.json --output .hermes-context/continuation.json
 ```
 
-Create the destination directory yourself. Without `--output`, only metrics reach
-stdout. Export is best-effort redacted, not encrypted, and may still contain private
-conversation content. POSIX files use mode 0600; Windows access also depends on the
-parent directory ACL. Do not commit exports. Interrupted writes may leave an
-incomplete file; the loader rejects malformed JSON. Exit codes: 0 success,
-2 validation/I/O error, 3 protected-context overflow.
+Create the destination directory first. No `--output` means no transcript file.
+Export is explicit, best-effort redacted, unencrypted, and never overwrites an
+existing file. It may still contain private text or structural IDs. Do not publish
+exports. POSIX files use 0600; Windows privacy also depends on the parent ACL.
+Malformed JSON and duplicate keys are rejected. Exit codes: 0 success, 2 validation
+or setup error, 3 protected-context overflow.
 
-## Supported message boundary
+A custom standalone `summarizer(redacted_history, max_tokens) -> str` callback is
+called at most once. Using a network provider inside it is the host application's
+explicit choice and requires appropriate consent. Redaction is not guaranteed
+anonymization, and labeling a summary is not a prompt-injection sandbox.
 
-Supported: `role`, text `content`, optional `name`, assistant `tool_calls` with
-function `id/name/arguments`, and tool `tool_call_id`. All tool results must be
-present before compaction. Controls must form a leading prefix.
-
-Unsupported fields, legacy `function_call`, images/audio, native Responses API
-items, and provider-specific reasoning/signature blocks are **rejected**, not
-silently dropped. Convert them in a host adapter with suitable accounting before
-using this release. Tool calls are data; this package never executes them.
-
-## Test and benchmark
+## Development
 
 ```bash
 python -m pip install .
@@ -122,16 +140,15 @@ python benchmarks/benchmark.py
 python tools/publication_scan.py
 ```
 
-The suite includes randomized synthetic histories, malformed tool chains, protected
-budget overflow, callback privacy, non-overwriting exports and repeat compaction.
-The benchmark is offline and prints reproducible counter-based savings, not model
-quality scores. See [architecture](docs/architecture.md),
-[security](SECURITY.md), and [contributing](CONTRIBUTING.md).
+Tests include repeated compaction, randomized tool histories, cross-agent state,
+concurrent reset, exact metadata recovery, secret masking and installation safety.
+CI also checks a pinned upstream ABC and scans tracked content and Git history.
+See [security](SECURITY.md), [contributing](CONTRIBUTING.md), and
+[0.2 verification](docs/verification-0.2.0.md).
 
-## Relationship to Hermes Agent
+## Attribution
 
-The historical `source/` extraction and old analysis documents remain as reference
-material. They are not imported or shipped in the wheel. New library code lives in
-`src/hermes_context/`. MIT; original Nous Research attribution is preserved.
-See [NOTICE.md](NOTICE.md). Independent community project, not an official
-Nous Research or OpenAI product.
+Independent community project, not an official Nous Research or OpenAI product.
+The historical Hermes extraction under `source/` remains reference material,
+unchanged and excluded from the wheel. New implementation: `src/hermes_context/`.
+Original MIT attribution is preserved; see [NOTICE.md](NOTICE.md).
