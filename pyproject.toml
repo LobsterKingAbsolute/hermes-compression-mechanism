@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermes-context-kit"
+version = "0.1.0"
+description = "Offline, turn-aware context compaction with explicit budgets and safe metrics"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE", "NOTICE.md"]
+authors = [{name = "Hermes Context contributors"}]
+keywords = ["agents", "context", "compression", "llm", "tool-calling"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/LobsterKingAbsolute/hermes-compression-mechanism"
+Issues = "https://github.com/LobsterKingAbsolute/hermes-compression-mechanism/issues"
+Documentation = "https://github.com/LobsterKingAbsolute/hermes-compression-mechanism/tree/main/docs"
+
+[project.scripts]
+hermes-context = "hermes_context.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+hermes_context = ["py.typed"]
+
+[tool.coverage.run]
+source = ["hermes_context"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
